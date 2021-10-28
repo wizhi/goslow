@@ -1,70 +1,68 @@
 package goslow
 
 import (
-	"container/list"
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
 func New(max int, period time.Duration) *slow {
+	queue := make(chan chan struct{}, max)
+	ticker := time.NewTicker(period)
+
+	ticker.Stop()
+
+	current := 0
+
+	go func() {
+		for f := range queue {
+			current++
+
+			if current > max {
+				<-ticker.C
+
+				current -= max
+			}
+
+			close(f)
+		}
+	}()
+
 	return &slow{
-		max:    int64(max),
 		period: period,
+		queue:  queue,
+		ticker: ticker,
 	}
 }
 
 type slow struct {
-	max    int64
 	period time.Duration
 
-	current int64
-	waiting list.List
-	ticker  *time.Ticker
+	queue  chan chan struct{}
+	ticker *time.Ticker
 
 	once sync.Once
 }
 
-func (t *slow) Do(ctx context.Context, f func()) error {
-	t.once.Do(func() {
-		t.ticker = time.NewTicker(t.period)
+func (s *slow) Do(ctx context.Context, f func()) error {
+	ready := make(chan struct{})
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case s.queue <- ready:
+	}
+
+	s.once.Do(func() {
+		s.ticker.Reset(s.period)
 	})
 
-	if atomic.AddInt64(&t.current, 1) <= t.max {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-ready:
 		f()
 
 		return nil
-	}
-
-	ready := make(chan struct{})
-
-	t.waiting.PushBack(ready)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-t.ticker.C:
-			atomic.StoreInt64(&t.current, 0)
-
-			next := t.waiting.Front()
-
-			for i := int64(0); i < t.max && next != nil; i++ {
-				t.waiting.Remove(next)
-
-				close(next.Value.(chan struct{}))
-
-				next = t.waiting.Front()
-			}
-
-			continue
-		case <-ready:
-			atomic.AddInt64(&t.current, 1)
-
-			f()
-
-			return nil
-		}
 	}
 }
