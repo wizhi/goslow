@@ -58,22 +58,44 @@ func TestFirstPeriodCallsFunctionsImmediately(t *testing.T) {
 }
 
 func TestCancelledFunctionsArentCalled(t *testing.T) {
-	period := time.Millisecond * 5
+	cases := []struct {
+		name string
 
-	sut := goslow.New(1, period)
+		period  time.Duration
+		timeout time.Duration
+		context func() context.Context
+	}{
+		{"when already cancelled", time.Second, time.Millisecond, func() context.Context {
+			ctx, cancel := context.WithCancel(context.Background())
 
-	ctx, cancel := context.WithCancel(context.Background())
-	c := make(chan struct{})
+			cancel()
 
-	cancel()
+			return ctx
+		}},
+		{"when timeout exceeded", time.Second, time.Millisecond * 10, func() context.Context {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*5)
 
-	go sut.Do(ctx, func() {
-		close(c)
-	})
+			cancel()
 
-	select {
-	case <-c:
-		t.Fail()
-	case <-time.After(period):
+			return ctx
+		}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sut := goslow.New(1, c.period)
+
+			a := make(chan struct{})
+
+			go sut.Do(c.context(), func() {
+				close(a)
+			})
+
+			select {
+			case <-a:
+				t.Fail()
+			case <-time.After(c.timeout):
+			}
+		})
 	}
 }
