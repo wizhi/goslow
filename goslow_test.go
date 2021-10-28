@@ -21,21 +21,23 @@ func TestExhaustive(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		sut := goslow.New(c.max, c.period)
+		t.Run(c.name, func(t *testing.T) {
+			sut := goslow.New(c.max, c.period)
 
-		ctx := context.Background()
+			ctx := context.Background()
 
-		seen := make(chan struct{}, c.max)
+			seen := make(chan struct{}, c.max)
 
-		for i := 0; i < c.total; i++ {
-			go sut.Do(ctx, func() {
-				seen <- struct{}{}
-			})
-		}
+			for i := 0; i < c.total; i++ {
+				go sut.Do(ctx, func() {
+					seen <- struct{}{}
+				})
+			}
 
-		for i := 0; i < c.total; i++ {
-			<-seen
-		}
+			for i := 0; i < c.total; i++ {
+				<-seen
+			}
+		})
 	}
 }
 
