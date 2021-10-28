@@ -38,36 +38,33 @@ func (t *slow) Do(ctx context.Context, f func()) error {
 	}
 
 	ready := make(chan struct{})
-	elem := t.waiting.PushBack(ready)
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.ticker.C:
-		atomic.StoreInt64(&t.current, 0)
+	t.waiting.PushBack(ready)
 
-		next := t.waiting.Front()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.ticker.C:
+			atomic.StoreInt64(&t.current, 0)
 
-		for i := int64(0); i < t.max && next != nil; i++ {
-			t.waiting.Remove(next)
+			next := t.waiting.Front()
 
-			if next == elem {
-				atomic.AddInt64(&t.current, 1)
+			for i := int64(0); i < t.max && next != nil; i++ {
+				t.waiting.Remove(next)
 
-				f()
+				close(next.Value.(chan struct{}))
+
+				next = t.waiting.Front()
 			}
 
-			close(next.Value.(chan struct{}))
+			continue
+		case <-ready:
+			atomic.AddInt64(&t.current, 1)
 
-			next = t.waiting.Front()
+			f()
+
+			return nil
 		}
-
-		return nil
-	case <-ready:
-		atomic.AddInt64(&t.current, 1)
-
-		f()
 	}
-
-	return nil
 }
