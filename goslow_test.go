@@ -56,3 +56,24 @@ func TestFirstPeriodCallsFunctionsImmediately(t *testing.T) {
 	case <-c:
 	}
 }
+
+func TestCancelledFunctionsArentCalled(t *testing.T) {
+	period := time.Millisecond * 5
+
+	sut := goslow.New(1, period)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c := make(chan struct{})
+
+	cancel()
+
+	go sut.Do(ctx, func() {
+		close(c)
+	})
+
+	select {
+	case <-c:
+		t.Fail()
+	case <-time.After(period):
+	}
+}
