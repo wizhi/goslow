@@ -38,3 +38,21 @@ func TestExhaustive(t *testing.T) {
 		}
 	}
 }
+
+func TestFirstPeriodCallsFunctionsImmediately(t *testing.T) {
+	period := time.Second
+
+	sut := goslow.New(1, period)
+
+	c := make(chan struct{})
+
+	go sut.Do(context.Background(), func() {
+		close(c)
+	})
+
+	select {
+	case <-time.After(period):
+		t.Fail()
+	case <-c:
+	}
+}
