@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func New(max int, period time.Duration) *slow {
+func New(max int, period time.Duration) *Slow {
 	queue := make(chan chan struct{}, max)
 	ticker := time.NewTicker(period)
 
@@ -28,14 +28,14 @@ func New(max int, period time.Duration) *slow {
 		}
 	}()
 
-	return &slow{
+	return &Slow{
 		period: period,
 		queue:  queue,
 		ticker: ticker,
 	}
 }
 
-type slow struct {
+type Slow struct {
 	period time.Duration
 
 	queue  chan chan struct{}
@@ -44,7 +44,7 @@ type slow struct {
 	once sync.Once
 }
 
-func (s *slow) Do(ctx context.Context, f func()) error {
+func (s *Slow) Do(ctx context.Context, f func()) error {
 	ready := make(chan struct{})
 
 	select {
